@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cooking To-Do Planner · PromptWars</title>
+  <link rel="stylesheet" href="static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🍳</span>
+      <div>
+        <strong>Cooking To-Do Planner</strong>
+        <small>Plan your day's meals in one click</small>
+      </div>
+    </div>
+    <span class="tag">PromptWars · Build with AI</span>
+  </header>
+
+  <main class="layout">
+    <!-- INPUT -->
+    <section class="card form-card">
+      <h2>Tell me about your day</h2>
+      <p class="muted">Set your constraints and generate a structured plan.</p>
+
+      <form id="planner-form">
+        <label class="field">
+          <span>Describe your day <small class="muted">(the AI uses this)</small></span>
+          <textarea name="dayText" rows="3"
+            placeholder="e.g. Busy morning, gym at 6pm, two guests for dinner. Want something light at lunch and quick to cook."></textarea>
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>People</span>
+            <input type="number" name="people" min="1" max="12" value="2" />
+          </label>
+          <label class="field">
+            <span>Budget (₹ / day)</span>
+            <input type="number" name="budget" min="50" step="10" value="300" />
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Diet</span>
+            <select name="diet">
+              <option value="veg">Vegetarian</option>
+              <option value="vegan">Vegan</option>
+              <option value="egg">Eggetarian</option>
+              <option value="nonveg">Non-veg</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Cuisine</span>
+            <select name="cuisine">
+              <option value="indian">Indian</option>
+              <option value="continental">Continental</option>
+              <option value="asian">Asian</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Max prep time per meal: <b id="prepVal">45</b> min</span>
+          <input type="range" name="maxPrep" min="10" max="60" step="5" value="45"
+                 oninput="document.getElementById('prepVal').textContent=this.value" />
+        </label>
+
+        <div class="meals-pick">
+          <span class="field-label">Meals to plan</span>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" name="breakfast" checked /> 🌅 Breakfast</label>
+            <label class="chip"><input type="checkbox" name="lunch" checked /> ☀️ Lunch</label>
+            <label class="chip"><input type="checkbox" name="dinner" checked /> 🌙 Dinner</label>
+          </div>
+        </div>
+
+        <button type="submit" class="primary">✨ Generate my cooking to-do</button>
+      </form>
+    </section>
+
+    <!-- OUTPUT -->
+    <section id="result" class="result">
+      <div class="empty">
+        <div class="empty-icon">🥗</div>
+        <p>Your meal plan, grocery list, substitutions, and budget check will appear here.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">Built for PromptWars · runs fully offline, no API keys</footer>
+
+  <script src="static/data.js"></script>
+  <script src="static/app.js"></script>
+</body>
+</html>
