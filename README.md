@@ -85,6 +85,15 @@ The backend auto-selects a provider by which key is present in `.env`:
 
 Free OpenRouter key: https://openrouter.ai/keys
 
+### Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Covers the deterministic logic: wellness scoring thresholds, crisis detection,
+input validation/clamping, output normalization, and JSON extraction.
+
 ### Deploy (Vercel)
 
 `vercel.json` routes all traffic to the Flask app via `@vercel/python`. Import the repo at
