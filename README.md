@@ -137,4 +137,22 @@ vercel.json       Vercel @vercel/python deployment config
 - **Model output HTML-escaped** before rendering (XSS guard).
 - **Wellness math is deterministic**, so the score is consistent and explainable.
 - **Graceful degradation:** any AI failure falls back to the offline engine.
+- **Hardening headers** on every response: Content-Security-Policy (same-origin only),
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, Referrer-Policy,
+  Permissions-Policy. Supabase secured with Row Level Security (service key server-side).
 - Secrets kept out of git via `.gitignore`; `.env.example` documents setup.
+
+## Performance and accessibility
+
+- **Connection pooling:** a shared `requests.Session` reuses TCP/TLS connections across
+  all OpenRouter and Supabase calls; the Anthropic client is a lazy singleton.
+- **Static assets cached** (`Cache-Control: public, max-age=86400`).
+- **Accessibility:** ARIA roles/state on tabs (`tablist`), the mood picker (`radiogroup`),
+  and the chat log (`role="log"`, `aria-live`); visible keyboard-focus rings; decorative
+  motion marked `aria-hidden` and disabled under `prefers-reduced-motion`.
+
+## Tests
+
+35 unit + route tests cover the deterministic logic (wellness scoring, crisis detection,
+validation, normalization, anonymous-id sanitization, row building) and the HTTP layer
+(endpoint validation, security headers, static caching). Run: `python -m unittest discover -s tests -v`.

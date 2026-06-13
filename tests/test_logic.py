@@ -179,5 +179,50 @@ class TestParseJsonBlock(unittest.TestCase):
         self.assertEqual(app.parse_json_block('Here you go: {"a": 1} hope that helps'), {"a": 1})
 
 
+class TestRoutes(unittest.TestCase):
+    """Route-level tests using Flask's test client. These deliberately exercise
+    only paths that return before any network call (validation/headers)."""
+
+    def setUp(self):
+        app.app.testing = True
+        self.client = app.app.test_client()
+
+    def test_index_served(self):
+        r = self.client.get("/")
+        self.assertEqual(r.status_code, 200)
+
+    def test_health_shape(self):
+        data = self.client.get("/api/health").get_json()
+        for key in ("ai", "db", "provider", "model"):
+            self.assertIn(key, data)
+
+    def test_security_headers_present(self):
+        h = self.client.get("/api/health").headers
+        self.assertIn("Content-Security-Policy", h)
+        self.assertEqual(h.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(h.get("X-Frame-Options"), "DENY")
+
+    def test_static_is_cacheable(self):
+        h = self.client.get("/static/app.js").headers
+        self.assertIn("max-age", h.get("Cache-Control", ""))
+
+    def test_reflect_rejects_empty_journal(self):
+        r = self.client.post("/api/reflect", json={"journal": "  "})
+        self.assertEqual(r.status_code, 400)
+
+    def test_chat_rejects_no_user_message(self):
+        r = self.client.post("/api/chat", json={"messages": []})
+        self.assertEqual(r.status_code, 400)
+
+    def test_checkin_rejects_missing_anon_id(self):
+        r = self.client.post("/api/checkins", json={"input": {}, "result": {}})
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(r.get_json()["stored"])
+
+    def test_history_without_anon_id_returns_empty(self):
+        data = self.client.get("/api/checkins").get_json()
+        self.assertEqual(data["items"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

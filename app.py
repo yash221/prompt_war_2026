@@ -63,6 +63,25 @@ DB_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024  # cap request body
 
+# Content Security Policy. We serve only same-origin assets and talk only to
+# our own /api (the server, not the browser, calls the LLM), so this is tight.
+# 'unsafe-inline' is needed only for style attributes (e.g. the score meter width).
+CSP = (
+    "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; "
+    "img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+    "script-src 'self'; connect-src 'self'; form-action 'self'"
+)
+
+
+@app.after_request
+def security_headers(resp):
+    resp.headers.setdefault("Content-Security-Policy", CSP)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    return resp
+
 EXAM_LABEL = {
     "neet": "NEET (medical entrance)",
     "jee": "JEE (engineering entrance)",
