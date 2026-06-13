@@ -58,7 +58,9 @@ SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
 DB_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
 
-app = Flask(__name__, static_folder="static")
+# static_folder=None disables Flask's built-in /static route so our own
+# handler below (absolute path + cache headers, Vercel-safe) is the one used.
+app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024  # cap request body
 
 EXAM_LABEL = {
@@ -216,30 +218,59 @@ CHAT_SYSTEM = (
 
 # --- provider calls --------------------------------------------------------
 
-def call_openrouter_json(system, user_prompt):
-    r = requests.post(
+# One pooled HTTP session for all outbound calls (OpenRouter + Supabase) so we
+# reuse TCP/TLS connections instead of reopening one per request.
+HTTP = requests.Session()
+
+_anthropic_client = None
+
+
+def _anthropic():
+    """Lazily build the Anthropic client once and reuse it across requests."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        from anthropic import Anthropic
+        _anthropic_client = Anthropic(api_key=ANTHROPIC_KEY)
+    return _anthropic_client
+
+
+def _openrouter_chat(messages, *, max_tokens, temperature, json_mode=False):
+    """Single OpenRouter entry point shared by the reflect + chat paths."""
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    r = HTTP.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"},
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1200,
-            "response_format": {"type": "json_object"},
-        },
-        timeout=45,
+        json=payload, timeout=45,
     )
     r.raise_for_status()
-    return parse_json_block(r.json()["choices"][0]["message"]["content"])
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def call_openrouter_json(system, user_prompt):
+    content = _openrouter_chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": user_prompt}],
+        max_tokens=1200, temperature=0.7, json_mode=True,
+    )
+    return parse_json_block(content)
+
+
+def call_openrouter_chat(messages):
+    content = _openrouter_chat(
+        [{"role": "system", "content": CHAT_SYSTEM}] + messages,
+        max_tokens=350, temperature=0.8,
+    )
+    return content.strip()
 
 
 def call_anthropic_reflect(params):
-    from anthropic import Anthropic
-    client = Anthropic(api_key=ANTHROPIC_KEY)
-    resp = client.messages.create(
+    resp = _anthropic().messages.create(
         model=ANTHROPIC_MODEL,
         max_tokens=1200,
         system=SYSTEM_PROMPT,
@@ -253,26 +284,8 @@ def call_anthropic_reflect(params):
     return block.input
 
 
-def call_openrouter_chat(messages):
-    r = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"},
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [{"role": "system", "content": CHAT_SYSTEM}] + messages,
-            "temperature": 0.8,
-            "max_tokens": 350,
-        },
-        timeout=45,
-    )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
-
-
 def call_anthropic_chat(messages):
-    from anthropic import Anthropic
-    client = Anthropic(api_key=ANTHROPIC_KEY)
-    resp = client.messages.create(
+    resp = _anthropic().messages.create(
         model=ANTHROPIC_MODEL,
         max_tokens=350,
         system=CHAT_SYSTEM,
@@ -442,7 +455,7 @@ def _sb_headers():
 
 
 def store_checkin(row):
-    r = requests.post(
+    r = HTTP.post(
         f"{SUPABASE_URL}/rest/v1/checkins",
         headers={**_sb_headers(), "Prefer": "return=minimal"},
         json=row, timeout=8,
@@ -451,7 +464,7 @@ def store_checkin(row):
 
 
 def fetch_history(anon_id, limit=30):
-    r = requests.get(
+    r = HTTP.get(
         f"{SUPABASE_URL}/rest/v1/checkins",
         headers=_sb_headers(),
         params={
@@ -475,7 +488,8 @@ def index():
 
 @app.route("/static/<path:fname>")
 def static_files(fname):
-    return send_from_directory(os.path.join(BASE_DIR, "static"), fname)
+    # max_age lets browsers/CDN cache assets for a day instead of refetching.
+    return send_from_directory(os.path.join(BASE_DIR, "static"), fname, max_age=86400)
 
 
 @app.route("/api/health")

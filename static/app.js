@@ -35,6 +35,9 @@ function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// The most recent check-in input, kept so "Reflect again" can re-run it.
+let lastInput = null;
+
 function detectCrisis(text) {
   if (text && CRISIS_RE.test(text)) {
     return { crisis: true, message: CRISIS_MESSAGE, helplines: HELPLINES };
@@ -268,7 +271,7 @@ function renderReflection(result) {
       <h3>🌬️ ${esc(m.name)}</h3>
       <span class="duration">${esc(m.duration)}</span>
     </div>
-    <div class="breath"><div class="orb"></div><span class="breath-label">breathe</span></div>
+    <div class="breath" aria-hidden="true"><div class="orb"></div><span class="breath-label">breathe</span></div>
     <ol class="steps">${steps}</ol>`;
   out.appendChild(mind);
 
@@ -281,9 +284,9 @@ function renderReflection(result) {
   const actions = el("div", "result-actions");
   const againBtn = el("button", "ghost", "🔁 Reflect again");
   againBtn.onclick = async () => {
-    if (!window._lastInput) return;
+    if (!lastInput) return;
     showReflecting();
-    renderReflection(await requestReflection(window._lastInput));
+    renderReflection(await requestReflection(lastInput));
   };
   const copyBtn = el("button", "ghost", "📋 Copy reflection");
   copyBtn.onclick = () => copyReflection(result, copyBtn);
@@ -487,8 +490,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const tabs = document.querySelectorAll(".tab");
   tabs.forEach(tab => {
     tab.addEventListener("click", () => {
-      tabs.forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
+      tabs.forEach(t => {
+        const on = t === tab;
+        t.classList.toggle("active", on);
+        t.setAttribute("aria-selected", on ? "true" : "false");
+      });
       const which = tab.dataset.tab;
       document.getElementById("view-checkin").classList.toggle("hidden", which !== "checkin");
       document.getElementById("view-companion").classList.toggle("hidden", which !== "companion");
@@ -499,13 +505,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Mood picker
   const moodInput = document.querySelector('input[name="mood"]');
-  document.querySelectorAll(".mood").forEach(btn => {
+  const moods = document.querySelectorAll(".mood");
+  moods.forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".mood").forEach(b => b.classList.remove("selected"));
-      btn.classList.add("selected");
+      moods.forEach(b => {
+        const on = b === btn;
+        b.classList.toggle("selected", on);
+        b.setAttribute("aria-checked", on ? "true" : "false");
+      });
       moodInput.value = btn.dataset.mood;
     });
   });
+
+  // Sleep slider: keep the readout in sync (was an inline handler in HTML).
+  const sleepRange = document.getElementById("sleepRange");
+  const sleepVal = document.getElementById("sleepVal");
+  sleepRange.addEventListener("input", () => { sleepVal.textContent = sleepRange.value; });
 
   // Check-in form
   const form = document.getElementById("checkin-form");
@@ -525,7 +540,7 @@ document.addEventListener("DOMContentLoaded", () => {
       daysToExam: Number.isFinite(days) ? days : null,
       sleepHours: parseInt(fd.get("sleepHours"), 10),
     };
-    window._lastInput = input;
+    lastInput = input;
     showReflecting();
     const result = await requestReflection(input);
     renderReflection(result);

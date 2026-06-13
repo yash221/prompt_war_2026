@@ -18,10 +18,10 @@
     <span class="tag">PromptWars · Build with AI</span>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="checkin">📓 Daily check-in</button>
-    <button class="tab" data-tab="companion">💬 Talk to MindEase</button>
-    <button class="tab" data-tab="history">📈 My history</button>
+  <nav class="tabs" role="tablist" aria-label="MindEase sections">
+    <button class="tab active" data-tab="checkin" role="tab" aria-selected="true">📓 Daily check-in</button>
+    <button class="tab" data-tab="companion" role="tab" aria-selected="false">💬 Talk to MindEase</button>
+    <button class="tab" data-tab="history" role="tab" aria-selected="false">📈 My history</button>
   </nav>
 
   <!-- ============ CHECK-IN VIEW ============ -->
@@ -34,12 +34,12 @@
       <form id="checkin-form">
         <div class="field">
           <span>Your mood right now</span>
-          <div class="mood-picker" id="mood-picker">
-            <button type="button" class="mood" data-mood="1" title="Very low">😞</button>
-            <button type="button" class="mood" data-mood="2" title="Low">😕</button>
-            <button type="button" class="mood selected" data-mood="3" title="Okay">😐</button>
-            <button type="button" class="mood" data-mood="4" title="Good">🙂</button>
-            <button type="button" class="mood" data-mood="5" title="Great">😄</button>
+          <div class="mood-picker" id="mood-picker" role="radiogroup" aria-label="Your mood right now">
+            <button type="button" class="mood" data-mood="1" title="Very low" aria-label="Very low" role="radio" aria-checked="false">😞</button>
+            <button type="button" class="mood" data-mood="2" title="Low" aria-label="Low" role="radio" aria-checked="false">😕</button>
+            <button type="button" class="mood selected" data-mood="3" title="Okay" aria-label="Okay" role="radio" aria-checked="true">😐</button>
+            <button type="button" class="mood" data-mood="4" title="Good" aria-label="Good" role="radio" aria-checked="false">🙂</button>
+            <button type="button" class="mood" data-mood="5" title="Great" aria-label="Great" role="radio" aria-checked="false">😄</button>
           </div>
           <input type="hidden" name="mood" value="3" />
         </div>
@@ -72,8 +72,7 @@
 
         <label class="field">
           <span>Sleep last night: <b id="sleepVal">7</b> hrs</span>
-          <input type="range" name="sleepHours" min="0" max="12" step="1" value="7"
-                 oninput="document.getElementById('sleepVal').textContent=this.value" />
+          <input type="range" name="sleepHours" id="sleepRange" min="0" max="12" step="1" value="7" />
         </label>
 
         <button type="submit" class="primary">🌱 Reflect with MindEase</button>
@@ -100,7 +99,7 @@
           <small class="muted" id="chat-status">always here to listen</small>
         </div>
       </div>
-      <div class="chat-log" id="chat-log"></div>
+      <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-label="Conversation with MindEase"></div>
       <form id="chat-form" class="chat-input">
         <input type="text" id="chat-text" autocomplete="off"
                placeholder="Tell me what's weighing on you…" />
