@@ -122,9 +122,10 @@ and deploy. Without a key it still runs in offline mode.
 app.py            Flask server: routes, provider calls, validation,
                   wellness scoring, crisis detection
 index.html        Single-page UI (check-in + companion chat)
-static/app.js     UI rendering + offline engine + AI fetch with fallback
 static/data.js    Offline knowledge base (triggers, strategies, mindfulness, helplines)
-static/style.css  Styling
+static/engine.js  Pure logic: scoring, offline reflection, crisis detection, storage, fetch
+static/app.js     DOM rendering, events, and wiring
+static/style.css  Styling (warm "Cream & Sage" light theme)
 vercel.json       Vercel @vercel/python deployment config
 ```
 
