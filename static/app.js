@@ -29,71 +29,61 @@ function crisisBanner(safety) {
   return box;
 }
 
-function renderReflection(result) {
-  const out = document.getElementById("result");
-  out.innerHTML = "";
-
-  if (result.safety && result.safety.crisis) {
-    out.appendChild(crisisBanner(result.safety));
-  }
-
-  // Wellness banner
+/** Score badge + emotion line + meter + advice. */
+function wellnessBanner(result) {
   const w = result.wellness;
-  const banner = el("div", `wellness-banner ${w.klass}`);
   const srcLabel = result.source === "ai"
     ? `<span class="src ai">⚡ AI reflection</span>`
     : `<span class="src off">offline mode</span>`;
-  banner.innerHTML = `
+  return el("div", `wellness-banner ${w.klass}`, `
     <div class="wellness-head">
       <span class="badge">${esc(w.state)}</span>
       <span class="wellness-figure">${num(w.score)}<small>/100 wellness</small></span>
     </div>
     <p class="emotion-line">You sound <b>${esc(result.emotion)}</b> today. ${srcLabel}</p>
     <div class="meter"><div class="fill" style="width:${Math.min(num(w.score), 100)}%"></div></div>
-    <p>${esc(w.advice)}</p>`;
-  out.appendChild(banner);
+    <p>${esc(w.advice)}</p>`);
+}
 
-  // Insight panel: what MannMitra notices
-  const insight = el("div", "panel");
-  insight.innerHTML = `<h3>🔎 What I'm noticing</h3><p class="pattern">${esc(result.patterns)}</p>`;
+/** "What I'm noticing": the emotional pattern plus any trigger chips. */
+function insightPanel(result) {
+  const insight = el("div", "panel",
+    `<h3>🔎 What I'm noticing</h3><p class="pattern">${esc(result.patterns)}</p>`);
   if (result.triggers.length) {
     const chips = el("div", "trigger-chips");
     result.triggers.forEach(t => chips.appendChild(el("span", "trig", esc(t.label))));
     insight.appendChild(el("div", "field-label", "Possible stress triggers"));
     insight.appendChild(chips);
   }
-  out.appendChild(insight);
+  return insight;
+}
 
-  // Coping strategies
-  const strat = el("div", "panel");
-  strat.innerHTML = `<h3>🧭 Coping strategies to try</h3>`;
-  const sl = el("ul", "strategy-list");
+/** Coping strategies as a tickable checklist. */
+function strategiesPanel(result) {
+  const panel = el("div", "panel", `<h3>🧭 Coping strategies to try</h3>`);
+  const list = el("ul", "strategy-list");
   result.strategies.forEach(s => {
-    sl.appendChild(el("li", null,
+    list.appendChild(el("li", null,
       `<label><input type="checkbox"><span><b>${esc(s.title)}</b><em>${esc(s.detail)}</em></span></label>`));
   });
-  strat.appendChild(sl);
-  out.appendChild(strat);
+  panel.appendChild(list);
+  return panel;
+}
 
-  // Mindfulness exercise (with a gentle breathing orb)
-  const m = result.mindfulness;
-  const mind = el("div", "panel mindful");
+/** Mindfulness exercise card with the breathing orb and steps. */
+function mindfulnessPanel(m) {
   const steps = m.steps.map(s => `<li>${esc(s)}</li>`).join("");
-  mind.innerHTML = `
+  return el("div", "panel mindful", `
     <div class="mindful-head">
       <h3>🌬️ ${esc(m.name)}</h3>
       <span class="duration">${esc(m.duration)}</span>
     </div>
     <div class="breath" aria-hidden="true"><div class="orb"></div><span class="breath-label">breathe</span></div>
-    <ol class="steps">${steps}</ol>`;
-  out.appendChild(mind);
+    <ol class="steps">${steps}</ol>`);
+}
 
-  // Encouragement
-  const note = el("div", "encourage");
-  note.innerHTML = `<span class="quote-mark">“</span>${esc(result.encouragement)}`;
-  out.appendChild(note);
-
-  // Actions
+/** Reflect-again + copy action buttons, wired up. */
+function reflectionActions(result) {
   const actions = el("div", "result-actions");
   const againBtn = el("button", "ghost", "🔁 Reflect again");
   againBtn.onclick = async () => {
@@ -104,7 +94,21 @@ function renderReflection(result) {
   const copyBtn = el("button", "ghost", "📋 Copy reflection");
   copyBtn.onclick = () => copyReflection(result, copyBtn);
   actions.append(againBtn, copyBtn);
-  out.appendChild(actions);
+  return actions;
+}
+
+/** Render a full reflection into #result, section by section. */
+function renderReflection(result) {
+  const out = document.getElementById("result");
+  out.innerHTML = "";
+
+  if (result.safety && result.safety.crisis) out.appendChild(crisisBanner(result.safety));
+  out.appendChild(wellnessBanner(result));
+  out.appendChild(insightPanel(result));
+  out.appendChild(strategiesPanel(result));
+  out.appendChild(mindfulnessPanel(result.mindfulness));
+  out.appendChild(el("div", "encourage", `<span class="quote-mark">“</span>${esc(result.encouragement)}`));
+  out.appendChild(reflectionActions(result));
 
   out.scrollIntoView({ behavior: "smooth", block: "start" });
 }
