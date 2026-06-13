@@ -30,6 +30,7 @@ Run:
 import json
 import os
 import re
+from typing import Optional
 
 import requests
 from flask import Flask, request, jsonify, send_from_directory
@@ -113,7 +114,7 @@ CRISIS_PATTERNS = [
 CRISIS_RE = re.compile("|".join(CRISIS_PATTERNS), re.IGNORECASE)
 
 
-def detect_crisis(text):
+def detect_crisis(text: Optional[str]) -> dict:
     """Return a safety object. Crisis flag is decided by Python, not the LLM."""
     if text and CRISIS_RE.search(text):
         return {
@@ -313,7 +314,7 @@ def call_anthropic_chat(messages):
     return "".join(b.text for b in resp.content if b.type == "text").strip()
 
 
-def parse_json_block(text):
+def parse_json_block(text: str) -> dict:
     """Robustly pull a JSON object out of a model's text reply."""
     text = text.strip()
     text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
@@ -324,41 +325,53 @@ def parse_json_block(text):
 
 
 # --- deterministic wellness scoring ----------------------------------------
+# These constants are kept in sync with assessWellness() in static/app.js so the
+# offline engine produces identical scores. Change both together.
 
-def assess_wellness(mood, sleep_hours, trigger_count):
+MOOD_BASE_SCORE = {1: 25, 2: 42, 3: 60, 4: 76, 5: 90}
+DEFAULT_BASE_SCORE = 60
+SLEEP_PENALTY_SEVERE = 12   # under 5 hours
+SLEEP_PENALTY_MILD = 6      # under 6 hours
+SLEEP_BONUS_RESTED = 4      # 7 hours or more
+TRIGGER_PENALTY_EACH = 4    # per stress trigger beyond the first
+TRIGGER_PENALTY_CAP = 16
+SCORE_MIN, SCORE_MAX = 5, 100
+
+# Score bands, highest first: (min_score, state label, css class, advice line).
+WELLNESS_BANDS = [
+    (75, "Steady", "ok",
+     "You're holding up well. Keep protecting the habits that are working for you."),
+    (55, "Managing", "ok",
+     "You're coping, with some strain. The strategies below can give you a bit more breathing room."),
+    (35, "Strained", "warn",
+     "Stress is running high. Be gentle with yourself today and try one small reset below."),
+    (0, "Overwhelmed", "over",
+     "You're carrying a lot right now. Please go easy on yourself, and consider talking to someone you trust."),
+]
+
+
+def assess_wellness(mood: int, sleep_hours: Optional[float], trigger_count: int) -> dict:
     """Wellness score from mood + sleep + stress load. Deterministic, not LLM."""
-    base = {1: 25, 2: 42, 3: 60, 4: 76, 5: 90}.get(mood, 60)
+    base = MOOD_BASE_SCORE.get(mood, DEFAULT_BASE_SCORE)
 
     if sleep_hours is not None:
         if sleep_hours < 5:
-            base -= 12
+            base -= SLEEP_PENALTY_SEVERE
         elif sleep_hours < 6:
-            base -= 6
+            base -= SLEEP_PENALTY_MILD
         elif sleep_hours >= 7:
-            base += 4
+            base += SLEEP_BONUS_RESTED
 
-    # Each trigger beyond the first chips away at the score, capped.
-    base -= min(max(trigger_count - 1, 0) * 4, 16)
+    base -= min(max(trigger_count - 1, 0) * TRIGGER_PENALTY_EACH, TRIGGER_PENALTY_CAP)
+    score = max(SCORE_MIN, min(SCORE_MAX, base))
 
-    score = max(5, min(100, base))
-
-    if score >= 75:
-        state, klass = "Steady", "ok"
-        advice = "You're holding up well. Keep protecting the habits that are working for you."
-    elif score >= 55:
-        state, klass = "Managing", "ok"
-        advice = "You're coping, with some strain. The strategies below can give you a bit more breathing room."
-    elif score >= 35:
-        state, klass = "Strained", "warn"
-        advice = "Stress is running high. Be gentle with yourself today and try one small reset below."
-    else:
-        state, klass = "Overwhelmed", "over"
-        advice = "You're carrying a lot right now. Please go easy on yourself, and consider talking to someone you trust."
-
-    return {"score": score, "state": state, "klass": klass, "advice": advice}
+    for threshold, state, klass, advice in WELLNESS_BANDS:
+        if score >= threshold:
+            return {"score": score, "state": state, "klass": klass, "advice": advice}
+    raise AssertionError("unreachable: WELLNESS_BANDS must cover score 0")
 
 
-def normalize(tool_input, p, safety):
+def normalize(tool_input: dict, p: dict, safety: dict) -> dict:
     """Map model output into the exact shape the frontend renders, add wellness."""
     triggers = []
     for t in tool_input.get("triggers", []):
@@ -394,7 +407,7 @@ def normalize(tool_input, p, safety):
     }
 
 
-def validate_reflect(data):
+def validate_reflect(data: dict) -> dict:
     """Server-side validation/clamping. Never trust the client."""
     if not isinstance(data, dict):
         raise ValueError("bad payload")
@@ -426,7 +439,7 @@ def validate_reflect(data):
 
 # --- storage (Supabase REST, best-effort) ----------------------------------
 
-def clean_anon_id(value):
+def clean_anon_id(value) -> Optional[str]:
     """An anonymous per-browser id. Sanitized; never trusted as-is."""
     cleaned = re.sub(r"[^A-Za-z0-9_-]", "", str(value or ""))[:64]
     return cleaned or None
@@ -446,7 +459,7 @@ def _float_or_none(value):
         return None
 
 
-def build_checkin_row(anon_id, inp, res):
+def build_checkin_row(anon_id: str, inp: Optional[dict], res: Optional[dict]) -> dict:
     """Shape a stored row from the input + rendered result. Pure (testable)."""
     inp = inp or {}
     res = res or {}

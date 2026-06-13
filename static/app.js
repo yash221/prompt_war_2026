@@ -94,30 +94,50 @@ async function saveCheckin(input, result) {
 }
 
 // --- offline reflection engine (mirrors the backend) -----------------------
+// These scoring constants mirror assess_wellness() in app.py exactly so the
+// offline engine and the server produce identical scores. Change both together.
 
+const MOOD_BASE_SCORE = { 1: 25, 2: 42, 3: 60, 4: 76, 5: 90 };
+const DEFAULT_BASE_SCORE = 60;
+const SLEEP_PENALTY_SEVERE = 12;  // under 5 hours
+const SLEEP_PENALTY_MILD = 6;     // under 6 hours
+const SLEEP_BONUS_RESTED = 4;     // 7 hours or more
+const TRIGGER_PENALTY_EACH = 4;   // per stress trigger beyond the first
+const TRIGGER_PENALTY_CAP = 16;
+const SCORE_MIN = 5, SCORE_MAX = 100;
+
+// Score bands, highest first: [minScore, state, cssClass, advice].
+const WELLNESS_BANDS = [
+  [75, "Steady", "ok",
+    "You're holding up well. Keep protecting the habits that are working for you."],
+  [55, "Managing", "ok",
+    "You're coping, with some strain. The strategies below can give you a bit more breathing room."],
+  [35, "Strained", "warn",
+    "Stress is running high. Be gentle with yourself today and try one small reset below."],
+  [0, "Overwhelmed", "over",
+    "You're carrying a lot right now. Please go easy on yourself, and consider talking to someone you trust."],
+];
+
+/**
+ * Compute the deterministic wellness score and band from mood, sleep, and load.
+ * @param {number} mood - 1 (very low) to 5 (great).
+ * @param {?number} sleep - hours slept, or null/NaN if not provided.
+ * @param {number} triggerCount - number of detected stress triggers.
+ * @returns {{score:number, state:string, klass:string, advice:string}}
+ */
 function assessWellness(mood, sleep, triggerCount) {
-  const baseTable = { 1: 25, 2: 42, 3: 60, 4: 76, 5: 90 };
-  let base = baseTable[mood] != null ? baseTable[mood] : 60;
+  let base = MOOD_BASE_SCORE[mood] != null ? MOOD_BASE_SCORE[mood] : DEFAULT_BASE_SCORE;
 
-  if (sleep != null) {
-    if (sleep < 5) base -= 12;
-    else if (sleep < 6) base -= 6;
-    else if (sleep >= 7) base += 4;
+  if (sleep != null && !Number.isNaN(sleep)) {
+    if (sleep < 5) base -= SLEEP_PENALTY_SEVERE;
+    else if (sleep < 6) base -= SLEEP_PENALTY_MILD;
+    else if (sleep >= 7) base += SLEEP_BONUS_RESTED;
   }
-  base -= Math.min(Math.max(triggerCount - 1, 0) * 4, 16);
+  base -= Math.min(Math.max(triggerCount - 1, 0) * TRIGGER_PENALTY_EACH, TRIGGER_PENALTY_CAP);
 
-  const score = Math.max(5, Math.min(100, base));
-  if (score >= 75)
-    return { score, state: "Steady", klass: "ok",
-      advice: "You're holding up well. Keep protecting the habits that are working for you." };
-  if (score >= 55)
-    return { score, state: "Managing", klass: "ok",
-      advice: "You're coping, with some strain. The strategies below can give you a bit more breathing room." };
-  if (score >= 35)
-    return { score, state: "Strained", klass: "warn",
-      advice: "Stress is running high. Be gentle with yourself today and try one small reset below." };
-  return { score, state: "Overwhelmed", klass: "over",
-    advice: "You're carrying a lot right now. Please go easy on yourself, and consider talking to someone you trust." };
+  const score = Math.max(SCORE_MIN, Math.min(SCORE_MAX, base));
+  const [, state, klass, advice] = WELLNESS_BANDS.find(b => score >= b[0]);
+  return { score, state, klass, advice };
 }
 
 function emotionLabel(mood, cats) {
