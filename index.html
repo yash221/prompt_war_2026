@@ -3,94 +3,114 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cooking To-Do Planner · PromptWars</title>
+  <title>MindEase · Wellness companion for exam aspirants</title>
   <link rel="stylesheet" href="static/style.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">🍳</span>
+      <span class="logo">🌿</span>
       <div>
-        <strong>Cooking To-Do Planner</strong>
-        <small>Plan your day's meals in one click</small>
+        <strong>MindEase</strong>
+        <small>A calm corner for students chasing big exams</small>
       </div>
     </div>
     <span class="tag">PromptWars · Build with AI</span>
   </header>
 
-  <main class="layout">
+  <nav class="tabs">
+    <button class="tab active" data-tab="checkin">📓 Daily check-in</button>
+    <button class="tab" data-tab="companion">💬 Talk to MindEase</button>
+  </nav>
+
+  <!-- ============ CHECK-IN VIEW ============ -->
+  <main class="layout" id="view-checkin">
     <!-- INPUT -->
     <section class="card form-card">
-      <h2>Tell me about your day</h2>
-      <p class="muted">Set your constraints and generate a structured plan.</p>
+      <h2>How are you today?</h2>
+      <p class="muted">Log your mood and write freely. MindEase reads between the lines.</p>
 
-      <form id="planner-form">
-        <label class="field">
-          <span>Describe your day <small class="muted">(the AI uses this)</small></span>
-          <textarea name="dayText" rows="3"
-            placeholder="e.g. Busy morning, gym at 6pm, two guests for dinner. Want something light at lunch and quick to cook."></textarea>
-        </label>
-
-        <div class="field-row">
-          <label class="field">
-            <span>People</span>
-            <input type="number" name="people" min="1" max="12" value="2" />
-          </label>
-          <label class="field">
-            <span>Budget (₹ / day)</span>
-            <input type="number" name="budget" min="50" step="10" value="300" />
-          </label>
-        </div>
-
-        <div class="field-row">
-          <label class="field">
-            <span>Diet</span>
-            <select name="diet">
-              <option value="veg">Vegetarian</option>
-              <option value="vegan">Vegan</option>
-              <option value="egg">Eggetarian</option>
-              <option value="nonveg">Non-veg</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Cuisine</span>
-            <select name="cuisine">
-              <option value="indian">Indian</option>
-              <option value="continental">Continental</option>
-              <option value="asian">Asian</option>
-            </select>
-          </label>
-        </div>
-
-        <label class="field">
-          <span>Max prep time per meal: <b id="prepVal">45</b> min</span>
-          <input type="range" name="maxPrep" min="10" max="60" step="5" value="45"
-                 oninput="document.getElementById('prepVal').textContent=this.value" />
-        </label>
-
-        <div class="meals-pick">
-          <span class="field-label">Meals to plan</span>
-          <div class="chips">
-            <label class="chip"><input type="checkbox" name="breakfast" checked /> 🌅 Breakfast</label>
-            <label class="chip"><input type="checkbox" name="lunch" checked /> ☀️ Lunch</label>
-            <label class="chip"><input type="checkbox" name="dinner" checked /> 🌙 Dinner</label>
+      <form id="checkin-form">
+        <div class="field">
+          <span>Your mood right now</span>
+          <div class="mood-picker" id="mood-picker">
+            <button type="button" class="mood" data-mood="1" title="Very low">😞</button>
+            <button type="button" class="mood" data-mood="2" title="Low">😕</button>
+            <button type="button" class="mood selected" data-mood="3" title="Okay">😐</button>
+            <button type="button" class="mood" data-mood="4" title="Good">🙂</button>
+            <button type="button" class="mood" data-mood="5" title="Great">😄</button>
           </div>
+          <input type="hidden" name="mood" value="3" />
         </div>
 
-        <button type="submit" class="primary">✨ Generate my cooking to-do</button>
+        <label class="field">
+          <span>What's on your mind? <small class="muted">(the more honest, the better)</small></span>
+          <textarea name="journal" rows="5"
+            placeholder="e.g. Another mock went badly today. Everyone in my batch seems ahead and I keep thinking I'll let my parents down. Couldn't sleep again."></textarea>
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Preparing for</span>
+            <select name="exam">
+              <option value="neet">NEET</option>
+              <option value="jee">JEE</option>
+              <option value="cuet">CUET</option>
+              <option value="cat">CAT</option>
+              <option value="gate">GATE</option>
+              <option value="upsc">UPSC</option>
+              <option value="boards">Board exams</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Days to exam <small class="muted">(optional)</small></span>
+            <input type="number" name="daysToExam" min="0" max="2000" placeholder="e.g. 45" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Sleep last night: <b id="sleepVal">7</b> hrs</span>
+          <input type="range" name="sleepHours" min="0" max="12" step="1" value="7"
+                 oninput="document.getElementById('sleepVal').textContent=this.value" />
+        </label>
+
+        <button type="submit" class="primary">🌱 Reflect with MindEase</button>
+        <p class="disclaimer">MindEase is a supportive companion, not a substitute for professional care.</p>
       </form>
     </section>
 
     <!-- OUTPUT -->
-    <section id="result" class="result">
+    <section id="result" class="result" aria-live="polite" aria-atomic="true">
       <div class="empty">
-        <div class="empty-icon">🥗</div>
-        <p>Your meal plan, grocery list, substitutions, and budget check will appear here.</p>
+        <div class="empty-icon">🧘</div>
+        <p>Your reflection, gentle insights, coping strategies and a mindfulness exercise will appear here.</p>
       </div>
     </section>
   </main>
 
-  <footer class="foot">Built for PromptWars · runs fully offline, no API keys</footer>
+  <!-- ============ COMPANION VIEW ============ -->
+  <main class="layout-chat hidden" id="view-companion">
+    <section class="card chat-card">
+      <div class="chat-head">
+        <span class="logo">🌿</span>
+        <div>
+          <strong>MindEase companion</strong>
+          <small class="muted" id="chat-status">always here to listen</small>
+        </div>
+      </div>
+      <div class="chat-log" id="chat-log"></div>
+      <form id="chat-form" class="chat-input">
+        <input type="text" id="chat-text" autocomplete="off"
+               placeholder="Tell me what's weighing on you…" />
+        <button type="submit" class="primary send">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <footer class="foot">
+    Built for PromptWars · If you're in crisis, please reach out: Tele-MANAS 14416 (India, 24x7)
+  </footer>
 
   <script src="static/data.js"></script>
   <script src="static/app.js"></script>

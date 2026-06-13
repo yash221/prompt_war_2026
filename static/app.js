@@ -1,129 +1,13 @@
 /*
- * Cooking To-Do Planner — engine + UI.
- * Pure client side. Takes the user's day, builds a structured meal plan,
- * grocery list, substitutions, and a budget feasibility verdict.
+ * MindEase - engine + UI. Pure client side where it can be.
+ * Two features:
+ *   1. Daily check-in -> structured wellness reflection (AI, with a full
+ *      deterministic offline fallback so it always works).
+ *   2. Companion chat -> conversational support (AI, with offline fallback).
+ * Crisis detection runs locally too, so safety holds even with no network.
  */
 
-// Diet hierarchy: a person on a given diet can eat anything at or below their level.
-const DIET_ALLOWS = {
-  vegan:  ["vegan"],
-  veg:    ["vegan", "veg"],
-  egg:    ["vegan", "veg", "egg"],
-  nonveg: ["vegan", "veg", "egg", "nonveg"],
-};
-
-const MEALS = ["breakfast", "lunch", "dinner"];
-
-// --- helpers ---------------------------------------------------------------
-
-function pickRecipe(meal, diet, cuisine, maxPrep, avoidIds) {
-  const allowed = DIET_ALLOWS[diet] || DIET_ALLOWS.nonveg;
-  let pool = RECIPES.filter(r =>
-    r.meal === meal &&
-    allowed.includes(r.diet) &&
-    r.prep <= maxPrep &&
-    !avoidIds.has(r.id)
-  );
-  // Relax the time limit before giving up, so we always return something.
-  if (pool.length === 0) {
-    pool = RECIPES.filter(r => r.meal === meal && allowed.includes(r.diet) && !avoidIds.has(r.id));
-  }
-  if (pool.length === 0) return null;
-
-  // Prefer the requested cuisine, fall back to anything.
-  const preferred = pool.filter(r => r.cuisine === cuisine);
-  const finalPool = preferred.length ? preferred : pool;
-
-  // Rotate by day-seed so "Regenerate" gives variety.
-  const seed = Math.floor(Math.random() * finalPool.length);
-  return finalPool[seed];
-}
-
-function buildGroceryList(recipes, people) {
-  // Aggregate ingredients, noting how many dishes use each and scaling by people.
-  const map = new Map();
-  recipes.forEach(r => {
-    r.ingredients.forEach(ing => {
-      const key = ing.toLowerCase();
-      if (!map.has(key)) map.set(key, { label: ing, count: 0 });
-      map.get(key).count += 1;
-    });
-  });
-  return [...map.values()]
-    .sort((a, b) => a.label.localeCompare(b.label))
-    .map(item => {
-      const scale = people > 1 ? ` ×${people}` : "";
-      const used = item.count > 1 ? ` (used in ${item.count} dishes)` : "";
-      return `${item.label}${scale}${used}`;
-    });
-}
-
-function buildSubstitutions(recipes) {
-  const found = [];
-  const seen = new Set();
-  recipes.forEach(r => {
-    r.ingredients.forEach(ing => {
-      const low = ing.toLowerCase();
-      SUBSTITUTIONS.forEach(sub => {
-        if (low.includes(sub.match) && !seen.has(sub.match)) {
-          seen.add(sub.match);
-          found.push({ from: sub.match, swap: sub.swap, note: sub.note });
-        }
-      });
-    });
-  });
-  return found;
-}
-
-function assessBudget(perDayCost, budget, people) {
-  const dailyBudget = budget; // user enters per-day budget for the whole household
-  const ratio = perDayCost / Math.max(dailyBudget, 1);
-  let verdict, klass, advice;
-  if (ratio <= 0.85) {
-    verdict = "Comfortably within budget";
-    klass = "ok";
-    advice = `You have about ₹${Math.round(dailyBudget - perDayCost)} of headroom per day.`;
-  } else if (ratio <= 1.0) {
-    verdict = "Tight but feasible";
-    klass = "warn";
-    advice = "You're close to the limit. The substitutions below can add a safety margin.";
-  } else {
-    verdict = "Over budget";
-    klass = "over";
-    advice = `Over by ~₹${Math.round(perDayCost - dailyBudget)}/day. Apply the substitutions or drop one premium dish.`;
-  }
-  return { verdict, klass, advice, perDayCost, dailyBudget, ratio };
-}
-
-// --- main flow -------------------------------------------------------------
-
-function generatePlan(input) {
-  const avoid = new Set();
-  const plan = {};
-  let total = 0;
-
-  input.meals.forEach(meal => {
-    const r = pickRecipe(meal, input.diet, input.cuisine, input.maxPrep, avoid);
-    if (r) {
-      avoid.add(r.id);
-      const perServing = r.cost;
-      const mealCost = perServing * input.people;
-      total += mealCost;
-      plan[meal] = { ...r, mealCost };
-    }
-  });
-
-  const chosen = Object.values(plan);
-  return {
-    input,
-    plan,
-    grocery: buildGroceryList(chosen, input.people),
-    subs: buildSubstitutions(chosen),
-    budget: assessBudget(total, input.budget, input.people),
-  };
-}
-
-// --- rendering -------------------------------------------------------------
+// --- small helpers ---------------------------------------------------------
 
 function el(tag, cls, html) {
   const e = document.createElement(tag);
@@ -132,163 +16,408 @@ function el(tag, cls, html) {
   return e;
 }
 
-const MEAL_ICON = { breakfast: "🌅", lunch: "☀️", dinner: "🌙" };
+// Escape any model/user-derived text before it goes into innerHTML (XSS guard).
+function esc(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
-function renderResult(result) {
-  const out = document.getElementById("result");
-  out.innerHTML = "";
+function num(value) {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? n : 0;
+}
 
-  // Budget banner
-  const b = result.budget;
-  const banner = el("div", `budget-banner ${b.klass}`);
-  const srcLabel = result.source === "ai"
-    ? `<span class="src ai">⚡ AI generated</span>`
-    : `<span class="src off">offline mode</span>`;
-  banner.innerHTML = `
-    <div class="budget-head">
-      <span class="badge">${b.verdict}</span>
-      <span class="budget-figure">₹${Math.round(b.perDayCost)} <small>/ ₹${b.dailyBudget} per day</small></span>
-    </div>
-    <p>${b.advice} ${srcLabel}</p>
-    <div class="meter"><div class="fill" style="width:${Math.min(b.ratio * 100, 100)}%"></div></div>`;
-  out.appendChild(banner);
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
-  // Meal plan (to-do cards)
-  const grid = el("div", "meal-grid");
-  MEALS.forEach(meal => {
-    const r = result.plan[meal];
-    if (!r) return;
-    const card = el("div", "meal-card");
-    const steps = r.ingredients
-      .map((ing, i) => `<li><label><input type="checkbox"> ${ing}</label></li>`).join("");
-    card.innerHTML = `
-      <div class="meal-card-head">
-        <span class="meal-name">${MEAL_ICON[meal]} ${meal[0].toUpperCase() + meal.slice(1)}</span>
-        <span class="meal-meta">${r.prep} min · ₹${r.mealCost}</span>
-      </div>
-      <h3>${r.name}</h3>
-      <ul class="todo">${steps}</ul>`;
-    grid.appendChild(card);
-  });
-  out.appendChild(grid);
-
-  // Two-column: grocery + substitutions
-  const cols = el("div", "two-col");
-
-  const grocery = el("div", "panel");
-  grocery.innerHTML = `<h3>🛒 Grocery list</h3>`;
-  const gl = el("ul", "todo");
-  result.grocery.forEach(g => {
-    gl.appendChild(el("li", null, `<label><input type="checkbox"> ${g}</label>`));
-  });
-  grocery.appendChild(gl);
-  cols.appendChild(grocery);
-
-  const subs = el("div", "panel");
-  subs.innerHTML = `<h3>🔄 Substitutions</h3>`;
-  if (result.subs.length) {
-    const sl = el("ul", "sub-list");
-    result.subs.forEach(s => {
-      sl.appendChild(el("li", null,
-        `<b>${s.from}</b> → <span class="swap">${s.swap}</span> <em>${s.note}</em>`));
-    });
-    subs.appendChild(sl);
-  } else {
-    subs.appendChild(el("p", "muted", "No swaps needed — your plan is already lean."));
+function detectCrisis(text) {
+  if (text && CRISIS_RE.test(text)) {
+    return { crisis: true, message: CRISIS_MESSAGE, helplines: HELPLINES };
   }
-  cols.appendChild(subs);
-  out.appendChild(cols);
+  return { crisis: false };
+}
 
-  // Actions
-  const actions = el("div", "result-actions");
-  const copyBtn = el("button", "ghost", "📋 Copy plan");
-  copyBtn.onclick = () => copyPlan(result, copyBtn);
-  const againBtn = el("button", "ghost", "🔁 Regenerate");
-  againBtn.onclick = async () => {
-    if (!window._lastInput) return;
-    showLoading();
-    renderResult(await requestPlan(window._lastInput));
+// --- offline reflection engine (mirrors the backend) -----------------------
+
+function assessWellness(mood, sleep, triggerCount) {
+  const baseTable = { 1: 25, 2: 42, 3: 60, 4: 76, 5: 90 };
+  let base = baseTable[mood] != null ? baseTable[mood] : 60;
+
+  if (sleep != null) {
+    if (sleep < 5) base -= 12;
+    else if (sleep < 6) base -= 6;
+    else if (sleep >= 7) base += 4;
+  }
+  base -= Math.min(Math.max(triggerCount - 1, 0) * 4, 16);
+
+  const score = Math.max(5, Math.min(100, base));
+  if (score >= 75)
+    return { score, state: "Steady", klass: "ok",
+      advice: "You're holding up well. Keep protecting the habits that are working for you." };
+  if (score >= 55)
+    return { score, state: "Managing", klass: "ok",
+      advice: "You're coping, with some strain. The strategies below can give you a bit more breathing room." };
+  if (score >= 35)
+    return { score, state: "Strained", klass: "warn",
+      advice: "Stress is running high. Be gentle with yourself today and try one small reset below." };
+  return { score, state: "Overwhelmed", klass: "over",
+    advice: "You're carrying a lot right now. Please go easy on yourself, and consider talking to someone you trust." };
+}
+
+function emotionLabel(mood, cats) {
+  if (cats.has("emotional")) return mood <= 2 ? "anxious and overwhelmed" : "anxious but holding on";
+  if (cats.has("performance")) return "discouraged and self-critical";
+  if (cats.has("family")) return "pressured and worried about others";
+  if (cats.has("physical")) return "drained and stretched thin";
+  if (cats.has("social")) return "isolated and comparing yourself a lot";
+  const base = { 1: "very low", 2: "low and tired", 3: "a bit mixed", 4: "fairly okay", 5: "positive and steady" };
+  return base[mood] || "a bit mixed";
+}
+
+function buildPattern(triggers, mood) {
+  if (!triggers.length) {
+    return mood <= 2
+      ? "There's a low, heavy feeling running under your words today, even if it's hard to name exactly why."
+      : "Things read as relatively steady today. It's worth noticing what's helping, so you can lean on it deliberately.";
+  }
+  const cats = new Set(triggers.map(t => t.category));
+  if (cats.has("performance") || cats.has("social"))
+    return "A pattern stands out: you're measuring your worth by results and by how you stack up against others. That comparison is draining more energy than the syllabus itself.";
+  if (cats.has("family"))
+    return "Underneath the studying, a lot of this seems to be about not wanting to let people down. That's love turning into pressure, and the two are worth separating.";
+  if (cats.has("emotional"))
+    return "The worry appears to be feeding on itself, racing toward worst-case outcomes faster than any single fact actually justifies.";
+  if (cats.has("physical"))
+    return "Your body is asking for something the schedule isn't giving it. The tiredness is shaping your mood more than it might seem.";
+  return "The same few pressures keep resurfacing in how you describe the day. Naming them, as you just did, is the first step to loosening their hold.";
+}
+
+function analyzeLocally(input) {
+  const text = input.journal.toLowerCase();
+  const triggers = [];
+  const strategies = [];
+  const seen = new Set();
+
+  TRIGGER_RULES.forEach(rule => {
+    if (rule.match.some(k => text.includes(k))) {
+      triggers.push({ label: rule.label, category: rule.category });
+      rule.strategies.forEach(s => {
+        if (!seen.has(s.title)) { seen.add(s.title); strategies.push(s); }
+      });
+    }
+  });
+
+  if (strategies.length === 0) {
+    GENERAL_STRATEGIES.forEach(s => strategies.push(s));
+  }
+
+  const cats = new Set(triggers.map(t => t.category));
+  const mindful = input.mood <= 2 ? MINDFULNESS.low : input.mood === 3 ? MINDFULNESS.mid : MINDFULNESS.good;
+  const wellness = assessWellness(input.mood, input.sleepHours, triggers.length);
+
+  return {
+    emotion: emotionLabel(input.mood, cats),
+    triggers,
+    patterns: buildPattern(triggers, input.mood),
+    strategies: strategies.slice(0, 4),
+    mindfulness: mindful,
+    encouragement: pick(ENCOURAGEMENTS[wellness.klass] || ENCOURAGEMENTS.ok),
+    wellness,
+    safety: detectCrisis(input.journal),
+    source: "offline",
   };
-  actions.append(copyBtn, againBtn);
-  out.appendChild(actions);
-
-  out.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function copyPlan(result, btn) {
-  let text = `My Cooking To-Do (${result.input.people} ppl, ₹${result.input.budget}/day)\n\n`;
-  MEALS.forEach(m => {
-    const r = result.plan[m];
-    if (r) text += `${m.toUpperCase()}: ${r.name} (${r.prep} min, ₹${r.mealCost})\n`;
-  });
-  text += `\nGROCERY:\n- ${result.grocery.join("\n- ")}\n`;
-  if (result.subs.length) {
-    text += `\nSUBSTITUTIONS:\n` + result.subs.map(s => `- ${s.from} -> ${s.swap} (${s.note})`).join("\n") + "\n";
-  }
-  text += `\nBUDGET: ${result.budget.verdict} — ₹${Math.round(result.budget.perDayCost)} of ₹${result.budget.dailyBudget}/day\n`;
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = "✅ Copied!";
-    setTimeout(() => (btn.textContent = "📋 Copy plan"), 1500);
-  });
-}
+// --- reflection request (AI first, offline fallback) -----------------------
 
-// --- form wiring -----------------------------------------------------------
-
-function showLoading() {
-  const out = document.getElementById("result");
-  out.innerHTML = `
-    <div class="empty">
-      <div class="empty-icon spin">🍳</div>
-      <p>Cooking up your plan…</p>
-    </div>`;
-}
-
-// Try the AI backend; fall back to the offline engine on any failure.
-async function requestPlan(input) {
+async function requestReflection(input) {
   try {
-    const res = await fetch("/api/plan", {
+    const res = await fetch("/api/reflect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
     if (!res.ok) throw new Error("ai_unavailable");
     const data = await res.json();
-    if (!data || !data.plan) throw new Error("bad_response");
-    data.input = data.input || { people: input.people, budget: input.budget };
+    if (!data || !data.wellness) throw new Error("bad_response");
     return data;
   } catch (err) {
-    // Offline / no key / network: deterministic local engine keeps the demo alive.
-    const local = generatePlan(input);
-    local.source = "offline";
-    return local;
+    return analyzeLocally(input);
   }
 }
 
+// --- reflection rendering --------------------------------------------------
+
+function crisisBanner(safety) {
+  const box = el("div", "crisis-banner");
+  const lines = safety.helplines
+    .map(h => `<li><b>${esc(h.name)}</b> · <span class="hl-num">${esc(h.contact)}</span> <em>${esc(h.note)}</em></li>`)
+    .join("");
+  box.innerHTML = `
+    <div class="crisis-head">🤍 You deserve support right now</div>
+    <p>${esc(safety.message)}</p>
+    <ul class="helplines">${lines}</ul>`;
+  return box;
+}
+
+function renderReflection(result) {
+  const out = document.getElementById("result");
+  out.innerHTML = "";
+
+  if (result.safety && result.safety.crisis) {
+    out.appendChild(crisisBanner(result.safety));
+  }
+
+  // Wellness banner
+  const w = result.wellness;
+  const banner = el("div", `wellness-banner ${w.klass}`);
+  const srcLabel = result.source === "ai"
+    ? `<span class="src ai">⚡ AI reflection</span>`
+    : `<span class="src off">offline mode</span>`;
+  banner.innerHTML = `
+    <div class="wellness-head">
+      <span class="badge">${esc(w.state)}</span>
+      <span class="wellness-figure">${num(w.score)}<small>/100 wellness</small></span>
+    </div>
+    <p class="emotion-line">You sound <b>${esc(result.emotion)}</b> today. ${srcLabel}</p>
+    <div class="meter"><div class="fill" style="width:${Math.min(num(w.score), 100)}%"></div></div>
+    <p>${esc(w.advice)}</p>`;
+  out.appendChild(banner);
+
+  // Insight panel: what MindEase notices
+  const insight = el("div", "panel");
+  insight.innerHTML = `<h3>🔎 What I'm noticing</h3><p class="pattern">${esc(result.patterns)}</p>`;
+  if (result.triggers.length) {
+    const chips = el("div", "trigger-chips");
+    result.triggers.forEach(t => chips.appendChild(el("span", "trig", esc(t.label))));
+    insight.appendChild(el("div", "field-label", "Possible stress triggers"));
+    insight.appendChild(chips);
+  }
+  out.appendChild(insight);
+
+  // Coping strategies
+  const strat = el("div", "panel");
+  strat.innerHTML = `<h3>🧭 Coping strategies to try</h3>`;
+  const sl = el("ul", "strategy-list");
+  result.strategies.forEach(s => {
+    sl.appendChild(el("li", null,
+      `<label><input type="checkbox"><span><b>${esc(s.title)}</b><em>${esc(s.detail)}</em></span></label>`));
+  });
+  strat.appendChild(sl);
+  out.appendChild(strat);
+
+  // Mindfulness exercise (with a gentle breathing orb)
+  const m = result.mindfulness;
+  const mind = el("div", "panel mindful");
+  const steps = m.steps.map(s => `<li>${esc(s)}</li>`).join("");
+  mind.innerHTML = `
+    <div class="mindful-head">
+      <h3>🌬️ ${esc(m.name)}</h3>
+      <span class="duration">${esc(m.duration)}</span>
+    </div>
+    <div class="breath"><div class="orb"></div><span class="breath-label">breathe</span></div>
+    <ol class="steps">${steps}</ol>`;
+  out.appendChild(mind);
+
+  // Encouragement
+  const note = el("div", "encourage");
+  note.innerHTML = `<span class="quote-mark">“</span>${esc(result.encouragement)}`;
+  out.appendChild(note);
+
+  // Actions
+  const actions = el("div", "result-actions");
+  const againBtn = el("button", "ghost", "🔁 Reflect again");
+  againBtn.onclick = async () => {
+    if (!window._lastInput) return;
+    showReflecting();
+    renderReflection(await requestReflection(window._lastInput));
+  };
+  const copyBtn = el("button", "ghost", "📋 Copy reflection");
+  copyBtn.onclick = () => copyReflection(result, copyBtn);
+  actions.append(againBtn, copyBtn);
+  out.appendChild(actions);
+
+  out.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function copyReflection(r, btn) {
+  let t = `MindEase reflection — feeling ${r.emotion} (wellness ${r.wellness.score}/100, ${r.wellness.state})\n\n`;
+  if (r.triggers.length) t += `TRIGGERS:\n- ${r.triggers.map(x => x.label).join("\n- ")}\n\n`;
+  t += `NOTICING: ${r.patterns}\n\n`;
+  t += `STRATEGIES:\n` + r.strategies.map(s => `- ${s.title}: ${s.detail}`).join("\n") + "\n\n";
+  t += `MINDFULNESS — ${r.mindfulness.name} (${r.mindfulness.duration}):\n- ` + r.mindfulness.steps.join("\n- ") + "\n\n";
+  t += `${r.encouragement}\n`;
+  navigator.clipboard.writeText(t).then(() => {
+    btn.textContent = "✅ Copied!";
+    setTimeout(() => (btn.textContent = "📋 Copy reflection"), 1500);
+  });
+}
+
+function showReflecting() {
+  const out = document.getElementById("result");
+  out.innerHTML = `
+    <div class="empty">
+      <div class="empty-icon pulse">🌿</div>
+      <p>Reading your words with care…</p>
+    </div>`;
+}
+
+// --- companion chat --------------------------------------------------------
+
+const GREETING =
+  "Hi, I'm MindEase. This is a no-pressure space — tell me whatever's on your mind about your prep, " +
+  "your day, or how you're feeling. I'm listening.";
+
+const GENERIC_REPLIES = [
+  "Thank you for telling me that. It takes something to put it into words. What part of it feels heaviest right now?",
+  "I hear you, and what you're feeling makes complete sense given everything you're carrying. You're not overreacting.",
+  "That sounds genuinely hard. You don't have to have it all figured out today. What's one small thing that might make the next hour a little lighter?",
+  "I'm really glad you said that out loud. Be as kind to yourself as you'd be to a friend in your seat. What would help most right now — to vent, or to make a tiny plan?",
+];
+
+function localReply(text) {
+  const safety = detectCrisis(text);
+  if (safety.crisis) return { reply: safety.message, safety };
+
+  const low = text.toLowerCase();
+  for (const rule of TRIGGER_RULES) {
+    if (rule.match.some(k => low.includes(k))) {
+      const s = rule.strategies[0];
+      return {
+        reply: `That's a real weight, and "${rule.label.toLowerCase()}" trips up so many aspirants — you're far from alone in it. One small thing that can help: ${s.detail} Want to talk through it a bit more?`,
+        safety,
+      };
+    }
+  }
+  return { reply: pick(GENERIC_REPLIES), safety };
+}
+
+const chatHistory = []; // {role, content}
+
+function renderChatMessage(role, content, safety) {
+  const log = document.getElementById("chat-log");
+  const row = el("div", `msg ${role}`);
+  if (role === "assistant") {
+    row.innerHTML = `<span class="avatar">🌿</span><div class="bubble">${esc(content)}</div>`;
+  } else {
+    row.innerHTML = `<div class="bubble">${esc(content)}</div>`;
+  }
+  log.appendChild(row);
+
+  if (safety && safety.crisis) {
+    const help = el("div", "msg assistant");
+    const lines = safety.helplines
+      .map(h => `<li><b>${esc(h.name)}</b> · <span class="hl-num">${esc(h.contact)}</span></li>`).join("");
+    help.innerHTML = `<span class="avatar">🤍</span><div class="bubble crisis-bubble">
+      Please reach out to someone who can be with you right now:
+      <ul class="helplines">${lines}</ul></div>`;
+    log.appendChild(help);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function showTyping() {
+  const log = document.getElementById("chat-log");
+  const row = el("div", "msg assistant typing-row");
+  row.id = "typing";
+  row.innerHTML = `<span class="avatar">🌿</span><div class="bubble typing"><span></span><span></span><span></span></div>`;
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById("typing");
+  if (t) t.remove();
+}
+
+async function sendChat(text) {
+  chatHistory.push({ role: "user", content: text });
+  renderChatMessage("user", text);
+  showTyping();
+
+  let result;
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: chatHistory }),
+    });
+    if (!res.ok) throw new Error("ai_unavailable");
+    const data = await res.json();
+    if (!data || !data.reply) throw new Error("bad_response");
+    result = { reply: data.reply, safety: data.safety };
+  } catch (err) {
+    result = localReply(text);
+  }
+
+  removeTyping();
+  chatHistory.push({ role: "assistant", content: result.reply });
+  renderChatMessage("assistant", result.reply, result.safety);
+}
+
+// --- wiring ----------------------------------------------------------------
+
 document.addEventListener("DOMContentLoaded", () => {
-  const form = document.getElementById("planner-form");
+  // Tabs
+  const tabs = document.querySelectorAll(".tab");
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      tabs.forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      const which = tab.dataset.tab;
+      document.getElementById("view-checkin").classList.toggle("hidden", which !== "checkin");
+      document.getElementById("view-companion").classList.toggle("hidden", which !== "companion");
+    });
+  });
+
+  // Mood picker
+  const moodInput = document.querySelector('input[name="mood"]');
+  document.querySelectorAll(".mood").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".mood").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      moodInput.value = btn.dataset.mood;
+    });
+  });
+
+  // Check-in form
+  const form = document.getElementById("checkin-form");
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const fd = new FormData(form);
-    const meals = MEALS.filter(m => fd.get(m));
-    if (meals.length === 0) {
-      alert("Pick at least one meal to plan.");
+    const journal = (fd.get("journal") || "").toString().trim();
+    if (journal.length < 3) {
+      alert("Write a few words about your day first — even one honest line helps.");
       return;
     }
+    const days = parseInt(fd.get("daysToExam"), 10);
     const input = {
-      breakfast: !!fd.get("breakfast"),
-      lunch: !!fd.get("lunch"),
-      dinner: !!fd.get("dinner"),
-      people: Math.max(1, parseInt(fd.get("people"), 10) || 1),
-      budget: Math.max(1, parseInt(fd.get("budget"), 10) || 200),
-      diet: fd.get("diet"),
-      cuisine: fd.get("cuisine"),
-      maxPrep: parseInt(fd.get("maxPrep"), 10) || 60,
-      dayText: (fd.get("dayText") || "").toString(),
-      meals,
+      mood: parseInt(fd.get("mood"), 10) || 3,
+      journal,
+      exam: fd.get("exam") || "other",
+      daysToExam: Number.isFinite(days) ? days : null,
+      sleepHours: parseInt(fd.get("sleepHours"), 10),
     };
     window._lastInput = input;
-    showLoading();
-    const result = await requestPlan(input);
-    renderResult(result);
+    showReflecting();
+    renderReflection(await requestReflection(input));
+  });
+
+  // Companion chat
+  renderChatMessage("assistant", GREETING);
+  chatHistory.push({ role: "assistant", content: GREETING });
+  const chatForm = document.getElementById("chat-form");
+  const chatText = document.getElementById("chat-text");
+  chatForm.addEventListener("submit", e => {
+    e.preventDefault();
+    const text = chatText.value.trim();
+    if (!text) return;
+    chatText.value = "";
+    sendChat(text);
   });
 });

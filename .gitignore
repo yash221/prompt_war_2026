@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+
+# Internal notes — do NOT publish
+JUDGING.md
+SUBMISSION_RULES.md
+SUBMISSION.md
