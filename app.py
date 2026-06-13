@@ -39,6 +39,8 @@ elif ANTHROPIC_KEY:
 else:
     PROVIDER, ACTIVE_MODEL = None, None
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 app = Flask(__name__, static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024  # cap request body
 
@@ -251,12 +253,12 @@ def validate(data):
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "index.html")
+    return send_from_directory(BASE_DIR, "index.html")
 
 
 @app.route("/static/<path:fname>")
 def static_files(fname):
-    return send_from_directory("static", fname)
+    return send_from_directory(os.path.join(BASE_DIR, "static"), fname)
 
 
 @app.route("/api/health")
