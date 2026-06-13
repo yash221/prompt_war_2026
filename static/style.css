@@ -246,6 +246,38 @@ button.ghost:hover { border-color: var(--teal-deep); }
 .chat-input input { flex: 1; }
 .send { margin: 0; padding: 11px 22px; white-space: nowrap; }
 
+/* ---------------- History ---------------- */
+.history-card { padding: 22px 24px; }
+.history-head h2 { margin: 0 0 4px; font-size: 19px; }
+.history-head p { margin: 0; }
+
+.trend { margin: 18px 0 22px; padding: 16px; background: var(--panel-2); border-radius: 12px; }
+.trend-bars { display: flex; align-items: flex-end; gap: 6px; height: 96px; }
+.tbar { flex: 1; min-width: 8px; border-radius: 5px 5px 0 0; background: var(--teal); opacity: .9; transition: height .4s ease; }
+.tbar.warn { background: var(--warn); }
+.tbar.over { background: var(--over); }
+.trend-label { margin-top: 8px; font-size: 11px; color: var(--muted); text-align: center; }
+
+.history-list { display: flex; flex-direction: column; gap: 10px; }
+.hist-item {
+  display: flex; gap: 13px; align-items: flex-start;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 13px 15px;
+}
+.hist-mood { font-size: 26px; line-height: 1; }
+.hist-body { flex: 1; min-width: 0; }
+.hist-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.hist-score {
+  font-weight: 800; font-size: 13px; padding: 2px 9px; border-radius: 999px;
+  background: rgba(70,201,180,.18); color: var(--teal);
+}
+.hist-score.warn { background: rgba(240,180,41,.18); color: var(--warn); }
+.hist-score.over { background: rgba(240,112,142,.18); color: var(--over); }
+.hist-date { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.hist-flag { color: var(--over); }
+.hist-trigs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.trig.sm { font-size: 11px; padding: 3px 9px; }
+
 /* Loading pulse */
 .pulse { display: inline-block; animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { transform: scale(1); opacity: .7; } 50% { transform: scale(1.12); opacity: 1; } }

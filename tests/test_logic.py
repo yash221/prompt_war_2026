@@ -120,6 +120,54 @@ class TestNormalize(unittest.TestCase):
         self.assertEqual(out["triggers"], [])  # neither has a label
 
 
+class TestCleanAnonId(unittest.TestCase):
+    def test_strips_unsafe_chars(self):
+        self.assertEqual(app.clean_anon_id("ab.cd/../x'; DROP"), "abcdxDROP")
+
+    def test_caps_length(self):
+        self.assertLessEqual(len(app.clean_anon_id("a" * 200)), 64)
+
+    def test_empty_becomes_none(self):
+        self.assertIsNone(app.clean_anon_id(""))
+        self.assertIsNone(app.clean_anon_id(None))
+
+    def test_keeps_uuid(self):
+        uid = "550e8400-e29b-41d4-a716-446655440000"
+        self.assertEqual(app.clean_anon_id(uid), uid)
+
+
+class TestBuildCheckinRow(unittest.TestCase):
+    def _res(self):
+        return {
+            "emotion": "anxious", "source": "ai",
+            "wellness": {"score": 42, "state": "Strained"},
+            "triggers": [{"label": "Behind", "category": "academic"}],
+            "safety": {"crisis": True},
+        }
+
+    def test_maps_fields(self):
+        row = app.build_checkin_row("user-1", {"mood": 2, "exam": "neet", "journal": "tired", "sleepHours": 5, "daysToExam": 30}, self._res())
+        self.assertEqual(row["anon_id"], "user-1")
+        self.assertEqual(row["mood"], 2)
+        self.assertEqual(row["wellness_score"], 42)
+        self.assertEqual(row["wellness_state"], "Strained")
+        self.assertTrue(row["crisis"])
+        self.assertEqual(len(row["triggers"]), 1)
+
+    def test_clamps_and_defaults(self):
+        row = app.build_checkin_row("u", {"mood": 99, "journal": "x" * 5000}, {})
+        self.assertEqual(row["mood"], 5)
+        self.assertLessEqual(len(row["journal"]), 2000)
+        self.assertEqual(row["wellness_score"], 0)
+        self.assertFalse(row["crisis"])
+        self.assertEqual(row["triggers"], [])
+
+    def test_handles_missing_optional_numbers(self):
+        row = app.build_checkin_row("u", {"mood": 3, "journal": "ok", "sleepHours": "", "daysToExam": ""}, self._res())
+        self.assertIsNone(row["sleep_hours"])
+        self.assertIsNone(row["days_to_exam"])
+
+
 class TestParseJsonBlock(unittest.TestCase):
     def test_plain_json(self):
         self.assertEqual(app.parse_json_block('{"a": 1}'), {"a": 1})

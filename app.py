@@ -51,6 +51,13 @@ else:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Optional Supabase persistence (Postgres via its REST API). When the env vars
+# are absent the app runs exactly as before; storage just no-ops and the client
+# keeps history in localStorage instead.
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+DB_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
+
 app = Flask(__name__, static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024  # cap request body
 
@@ -385,6 +392,80 @@ def validate_reflect(data):
     }
 
 
+# --- storage (Supabase REST, best-effort) ----------------------------------
+
+def clean_anon_id(value):
+    """An anonymous per-browser id. Sanitized; never trusted as-is."""
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", str(value or ""))[:64]
+    return cleaned or None
+
+
+def _int_or_none(value):
+    try:
+        return None if value in (None, "") else int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _float_or_none(value):
+    try:
+        return None if value in (None, "") else float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def build_checkin_row(anon_id, inp, res):
+    """Shape a stored row from the input + rendered result. Pure (testable)."""
+    inp = inp or {}
+    res = res or {}
+    wellness = res.get("wellness") or {}
+    safety = res.get("safety") or {}
+    triggers = [t for t in (res.get("triggers") or []) if isinstance(t, dict)][:12]
+    return {
+        "anon_id": anon_id,
+        "mood": min(max(_int_or_none(inp.get("mood")) or 3, 1), 5),
+        "exam": str(inp.get("exam", ""))[:20],
+        "days_to_exam": _int_or_none(inp.get("daysToExam")),
+        "sleep_hours": _float_or_none(inp.get("sleepHours")),
+        "journal": str(inp.get("journal", ""))[:2000],
+        "emotion": str(res.get("emotion", ""))[:120],
+        "wellness_score": min(max(_int_or_none(wellness.get("score")) or 0, 0), 100),
+        "wellness_state": str(wellness.get("state", ""))[:30],
+        "triggers": triggers,
+        "source": str(res.get("source", ""))[:16],
+        "crisis": bool(safety.get("crisis")),
+    }
+
+
+def _sb_headers():
+    return {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
+
+
+def store_checkin(row):
+    r = requests.post(
+        f"{SUPABASE_URL}/rest/v1/checkins",
+        headers={**_sb_headers(), "Prefer": "return=minimal"},
+        json=row, timeout=8,
+    )
+    r.raise_for_status()
+
+
+def fetch_history(anon_id, limit=30):
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/checkins",
+        headers=_sb_headers(),
+        params={
+            "anon_id": f"eq.{anon_id}",
+            "order": "created_at.desc",
+            "limit": str(limit),
+            "select": "created_at,mood,emotion,wellness_score,wellness_state,triggers,source,crisis",
+        },
+        timeout=8,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # --- routes ----------------------------------------------------------------
 
 @app.route("/")
@@ -399,7 +480,34 @@ def static_files(fname):
 
 @app.route("/api/health")
 def health():
-    return jsonify({"ai": bool(PROVIDER), "provider": PROVIDER, "model": ACTIVE_MODEL})
+    return jsonify({"ai": bool(PROVIDER), "provider": PROVIDER, "model": ACTIVE_MODEL, "db": DB_ENABLED})
+
+
+@app.route("/api/checkins", methods=["GET", "POST"])
+def checkins():
+    if request.method == "GET":
+        anon = clean_anon_id(request.args.get("anon_id"))
+        if not DB_ENABLED or not anon:
+            return jsonify({"items": [], "db": DB_ENABLED})
+        try:
+            return jsonify({"items": fetch_history(anon), "db": True})
+        except Exception as e:
+            app.logger.warning("history fetch failed: %s", e)
+            return jsonify({"items": [], "db": True, "error": "fetch_failed"})
+
+    # POST: persist one check-in (best-effort; never breaks the UX).
+    body = request.get_json(force=True, silent=True) or {}
+    anon = clean_anon_id(body.get("anon_id"))
+    if not anon:
+        return jsonify({"stored": False, "reason": "no_anon_id"}), 400
+    if not DB_ENABLED:
+        return jsonify({"stored": False, "reason": "db_disabled"})
+    try:
+        store_checkin(build_checkin_row(anon, body.get("input"), body.get("result")))
+        return jsonify({"stored": True})
+    except Exception as e:
+        app.logger.warning("checkin store failed: %s", e)
+        return jsonify({"stored": False, "reason": "store_failed"})
 
 
 @app.route("/api/reflect", methods=["POST"])
@@ -459,5 +567,6 @@ def chat():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     status = f"{PROVIDER} ({ACTIVE_MODEL})" if PROVIDER else "off - offline fallback"
-    print(f"  MindEase wellness companion on http://127.0.0.1:{port}   AI: {status}")
+    db = "on (Supabase)" if DB_ENABLED else "off - localStorage only"
+    print(f"  MindEase wellness companion on http://127.0.0.1:{port}   AI: {status}   DB: {db}")
     app.run(host="127.0.0.1", port=port, debug=False)

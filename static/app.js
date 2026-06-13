@@ -42,6 +42,54 @@ function detectCrisis(text) {
   return { crisis: false };
 }
 
+// --- storage (server via Supabase + localStorage mirror) -------------------
+
+const LS_HISTORY = "mindease_history";
+const MOOD_EMOJI = { 1: "😞", 2: "😕", 3: "😐", 4: "🙂", 5: "😄" };
+
+// One stable anonymous id per browser, so history is "yours" without a login.
+function getAnonId() {
+  let id = localStorage.getItem("mindease_id");
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : "u-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem("mindease_id", id);
+  }
+  return id;
+}
+
+function localHistory() {
+  try { return JSON.parse(localStorage.getItem(LS_HISTORY) || "[]"); }
+  catch (e) { return []; }
+}
+
+function pushLocalHistory(entry) {
+  const all = localHistory();
+  all.unshift(entry);
+  localStorage.setItem(LS_HISTORY, JSON.stringify(all.slice(0, 60)));
+}
+
+// Save a check-in: always to localStorage, and to the server when DB is on.
+async function saveCheckin(input, result) {
+  pushLocalHistory({
+    created_at: new Date().toISOString(),
+    mood: input.mood,
+    emotion: result.emotion,
+    wellness_score: result.wellness.score,
+    wellness_state: result.wellness.state,
+    triggers: result.triggers,
+    source: result.source,
+    crisis: !!(result.safety && result.safety.crisis),
+  });
+  try {
+    await fetch("/api/checkins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anon_id: getAnonId(), input, result }),
+    });
+  } catch (e) { /* offline: localStorage already has it */ }
+}
+
 // --- offline reflection engine (mirrors the backend) -----------------------
 
 function assessWellness(mood, sleep, triggerCount) {
@@ -360,6 +408,78 @@ async function sendChat(text) {
   renderChatMessage("assistant", result.reply, result.safety);
 }
 
+// --- history view ----------------------------------------------------------
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+    ", " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function klassForScore(s) {
+  return s >= 55 ? "ok" : s >= 35 ? "warn" : "over";
+}
+
+function renderHistory(items) {
+  const list = document.getElementById("history-list");
+  const trend = document.getElementById("trend");
+  const sub = document.getElementById("history-sub");
+  list.innerHTML = "";
+
+  if (!items.length) {
+    trend.classList.add("hidden");
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🗂️</div>
+      <p>No check-ins yet. Do a daily check-in and it'll appear here.</p></div>`;
+    return;
+  }
+
+  // Trend: oldest -> newest, last 12 scores.
+  const chrono = items.slice().reverse().slice(-12);
+  const bars = document.getElementById("trend-bars");
+  bars.innerHTML = "";
+  chrono.forEach(it => {
+    const s = num(it.wellness_score);
+    const bar = el("div", `tbar ${klassForScore(s)}`);
+    bar.style.height = Math.max(6, s) + "%";
+    bar.title = `${s}/100`;
+    bars.appendChild(bar);
+  });
+  trend.classList.remove("hidden");
+  sub.textContent = `${items.length} check-in${items.length > 1 ? "s" : ""} saved on this device.`;
+
+  // List: newest first.
+  items.forEach(it => {
+    const s = num(it.wellness_score);
+    const row = el("div", "hist-item");
+    const chips = (it.triggers || []).slice(0, 3)
+      .map(t => `<span class="trig sm">${esc(t.label)}</span>`).join("");
+    row.innerHTML = `
+      <span class="hist-mood">${MOOD_EMOJI[it.mood] || "😐"}</span>
+      <div class="hist-body">
+        <div class="hist-top">
+          <span class="hist-score ${klassForScore(s)}">${s}</span>
+          <b>${esc(it.wellness_state || "")}</b>
+          <span class="muted">· feeling ${esc(it.emotion || "")}</span>
+        </div>
+        <div class="hist-date">${esc(fmtDate(it.created_at))}${it.crisis ? ' · <span class="hist-flag">support shown</span>' : ""}</div>
+        ${chips ? `<div class="hist-trigs">${chips}</div>` : ""}
+      </div>`;
+    list.appendChild(row);
+  });
+}
+
+async function loadHistory() {
+  let items = [];
+  try {
+    const res = await fetch("/api/checkins?anon_id=" + encodeURIComponent(getAnonId()));
+    const data = await res.json();
+    if (data && Array.isArray(data.items) && data.items.length) items = data.items;
+  } catch (e) { /* fall back to local */ }
+  if (!items.length) items = localHistory();
+  renderHistory(items);
+}
+
 // --- wiring ----------------------------------------------------------------
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -372,6 +492,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const which = tab.dataset.tab;
       document.getElementById("view-checkin").classList.toggle("hidden", which !== "checkin");
       document.getElementById("view-companion").classList.toggle("hidden", which !== "companion");
+      document.getElementById("view-history").classList.toggle("hidden", which !== "history");
+      if (which === "history") loadHistory();
     });
   });
 
@@ -405,7 +527,9 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     window._lastInput = input;
     showReflecting();
-    renderReflection(await requestReflection(input));
+    const result = await requestReflection(input);
+    renderReflection(result);
+    saveCheckin(input, result);
   });
 
   // Companion chat

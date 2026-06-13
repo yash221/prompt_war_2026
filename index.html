@@ -21,6 +21,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="checkin">📓 Daily check-in</button>
     <button class="tab" data-tab="companion">💬 Talk to MindEase</button>
+    <button class="tab" data-tab="history">📈 My history</button>
   </nav>
 
   <!-- ============ CHECK-IN VIEW ============ -->
@@ -105,6 +106,28 @@
                placeholder="Tell me what's weighing on you…" />
         <button type="submit" class="primary send">Send</button>
       </form>
+    </section>
+  </main>
+
+  <!-- ============ HISTORY VIEW ============ -->
+  <main class="layout-chat hidden" id="view-history">
+    <section class="card history-card">
+      <div class="history-head">
+        <div>
+          <h2>Your wellness journey</h2>
+          <p class="muted" id="history-sub">Each check-in is saved so you can see your emotional patterns over time.</p>
+        </div>
+      </div>
+      <div id="trend" class="trend hidden">
+        <div class="trend-bars" id="trend-bars"></div>
+        <div class="trend-label">wellness score · most recent on the right</div>
+      </div>
+      <div id="history-list" class="history-list">
+        <div class="empty">
+          <div class="empty-icon">🗂️</div>
+          <p>No check-ins yet. Your saved reflections will show up here.</p>
+        </div>
+      </div>
     </section>
   </main>
 
