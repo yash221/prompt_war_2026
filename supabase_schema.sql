@@ -1,4 +1,4 @@
--- MindEase check-in history table.
+-- MannMitra check-in history table.
 -- Run this once in Supabase: Dashboard -> SQL Editor -> New query -> Run.
 
 create table if not exists public.checkins (

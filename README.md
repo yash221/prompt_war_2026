@@ -1,8 +1,8 @@
-# MindEase — Mental Wellness Companion for Exam Aspirants
+# MannMitra — Mental Wellness Companion for Exam Aspirants
 
 A GenAI wellness tool built for **PromptWars · Build with AI**. Students preparing for
 high-stakes exams (NEET, JEE, CUET, CAT, GATE, UPSC, boards) log their mood and journal
-freely. MindEase reads between the lines to surface hidden stress triggers and emotional
+freely. MannMitra reads between the lines to surface hidden stress triggers and emotional
 patterns, then offers personalized coping strategies, an adaptive mindfulness exercise,
 and warm encouragement. A built-in conversational companion is always available to talk.
 
@@ -102,7 +102,7 @@ and deploy. Without a key it still runs in offline mode.
 
 ## 4. Assumptions and scope
 
-- **Not a medical device.** MindEase is a supportive companion, not a diagnosis or a
+- **Not a medical device.** MannMitra is a supportive companion, not a diagnosis or a
   substitute for professional care. It never diagnoses and points to human help for
   serious distress.
 - **India-focused safety.** Crisis helplines are Indian (Tele-MANAS 14416, iCall, AASRA,

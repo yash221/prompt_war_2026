@@ -1,5 +1,5 @@
 /*
- * MindEase - engine + UI. Pure client side where it can be.
+ * MannMitra - engine + UI. Pure client side where it can be.
  * Two features:
  *   1. Daily check-in -> structured wellness reflection (AI, with a full
  *      deterministic offline fallback so it always works).
@@ -47,16 +47,16 @@ function detectCrisis(text) {
 
 // --- storage (server via Supabase + localStorage mirror) -------------------
 
-const LS_HISTORY = "mindease_history";
+const LS_HISTORY = "mannmitra_history";
 const MOOD_EMOJI = { 1: "😞", 2: "😕", 3: "😐", 4: "🙂", 5: "😄" };
 
 // One stable anonymous id per browser, so history is "yours" without a login.
 function getAnonId() {
-  let id = localStorage.getItem("mindease_id");
+  let id = localStorage.getItem("mannmitra_id");
   if (!id) {
     id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
       : "u-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    localStorage.setItem("mindease_id", id);
+    localStorage.setItem("mannmitra_id", id);
   }
   return id;
 }
@@ -240,7 +240,7 @@ function renderReflection(result) {
     <p>${esc(w.advice)}</p>`;
   out.appendChild(banner);
 
-  // Insight panel: what MindEase notices
+  // Insight panel: what MannMitra notices
   const insight = el("div", "panel");
   insight.innerHTML = `<h3>🔎 What I'm noticing</h3><p class="pattern">${esc(result.patterns)}</p>`;
   if (result.triggers.length) {
@@ -297,7 +297,7 @@ function renderReflection(result) {
 }
 
 function copyReflection(r, btn) {
-  let t = `MindEase reflection — feeling ${r.emotion} (wellness ${r.wellness.score}/100, ${r.wellness.state})\n\n`;
+  let t = `MannMitra reflection — feeling ${r.emotion} (wellness ${r.wellness.score}/100, ${r.wellness.state})\n\n`;
   if (r.triggers.length) t += `TRIGGERS:\n- ${r.triggers.map(x => x.label).join("\n- ")}\n\n`;
   t += `NOTICING: ${r.patterns}\n\n`;
   t += `STRATEGIES:\n` + r.strategies.map(s => `- ${s.title}: ${s.detail}`).join("\n") + "\n\n";
@@ -321,7 +321,7 @@ function showReflecting() {
 // --- companion chat --------------------------------------------------------
 
 const GREETING =
-  "Hi, I'm MindEase. This is a no-pressure space — tell me whatever's on your mind about your prep, " +
+  "Hi, I'm MannMitra. This is a no-pressure space — tell me whatever's on your mind about your prep, " +
   "your day, or how you're feeling. I'm listening.";
 
 const GENERIC_REPLIES = [

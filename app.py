@@ -1,5 +1,5 @@
 """
-MindEase - Mental Wellness Companion for exam aspirants. Backend.
+MannMitra - Mental Wellness Companion for exam aspirants. Backend.
 
 Serves the single-page app and exposes two endpoints:
   POST /api/reflect  -> turns a daily journal + mood log into a structured
@@ -148,7 +148,7 @@ JSON_SHAPE = """{
 }"""
 
 SYSTEM_PROMPT = (
-    "You are MindEase, a warm, empathetic wellness companion for Indian students "
+    "You are MannMitra, a warm, empathetic wellness companion for Indian students "
     "preparing for high-stakes exams (NEET, JEE, CUET, CAT, GATE, UPSC, boards). "
     "You are NOT a doctor or therapist and you never diagnose. You read a student's "
     "daily journal and mood, then reflect back what you notice with compassion. "
@@ -226,7 +226,7 @@ def build_reflect_prompt(p):
 # --- chat: companion -------------------------------------------------------
 
 CHAT_SYSTEM = (
-    "You are MindEase, a warm, always-available wellness companion for Indian students "
+    "You are MannMitra, a warm, always-available wellness companion for Indian students "
     "preparing for high-stakes exams. Talk like a caring, grounded friend who happens "
     "to know about stress and study burnout. You are NOT a therapist and never diagnose; "
     "for anything serious you gently encourage reaching out to a trusted person or a "
@@ -601,5 +601,5 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     status = f"{PROVIDER} ({ACTIVE_MODEL})" if PROVIDER else "off - offline fallback"
     db = "on (Supabase)" if DB_ENABLED else "off - localStorage only"
-    print(f"  MindEase wellness companion on http://127.0.0.1:{port}   AI: {status}   DB: {db}")
+    print(f"  MannMitra wellness companion on http://127.0.0.1:{port}   AI: {status}   DB: {db}")
     app.run(host="127.0.0.1", port=port, debug=False)

@@ -1,5 +1,5 @@
 /*
- * MindEase offline knowledge base.
+ * MannMitra offline knowledge base.
  * Powers the deterministic fallback engine so the app gives a real,
  * useful reflection even with no API key / no network.
  *
